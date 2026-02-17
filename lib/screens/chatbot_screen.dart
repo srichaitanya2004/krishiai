@@ -1,5 +1,6 @@
-// chatbot_screen.dart
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -11,93 +12,173 @@ class ChatbotScreen extends StatefulWidget {
 class _ChatbotScreenState extends State<ChatbotScreen> {
   final List<Map<String, dynamic>> _chatMessages = [];
   final TextEditingController _chatController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  bool _isLoading = false;
+
+  static const String apiKey = "AIzaSyBdMuRVO-CE9iuX6sCVUEkInlf4JwumQVY";
+
+  Future<String> _getAIResponse() async {
+    final url = Uri.parse(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=$apiKey",
+    );
+
+    // Prepare conversation history
+    List<Map<String, dynamic>> contents = [];
+
+    // System instruction
+    contents.add({
+      "role": "user",
+      "parts": [
+        {
+          "text":
+              "You are an agricultural expert helping Indian farmers. Give practical, step-by-step advice.",
+        },
+      ],
+    });
+
+    // Add previous conversation
+    for (var message in _chatMessages) {
+      contents.add({
+        "role": message['isUser'] ? "user" : "model",
+        "parts": [
+          {"text": message['text']},
+        ],
+      });
+    }
+
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"contents": contents}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data["candidates"][0]["content"]["parts"][0]["text"];
+    } else {
+      print("Status: ${response.statusCode}");
+      print("Body: ${response.body}");
+      return "Server Error: ${response.statusCode}";
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    if (_chatController.text.trim().isEmpty || _isLoading) return;
+
+    final userText = _chatController.text.trim();
+
+    setState(() {
+      _chatMessages.add({'text': userText, 'isUser': true});
+      _isLoading = true;
+    });
+
+    _chatController.clear();
+    _scrollToBottom();
+
+    try {
+      final aiResponse = await _getAIResponse();
+
+      setState(() {
+        _chatMessages.add({'text': aiResponse, 'isUser': false});
+      });
+    } catch (e) {
+      setState(() {
+        _chatMessages.add({
+          'text': "Something went wrong. Please try again.",
+          'isUser': false,
+        });
+      });
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _chatController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('KrishiAI Farming Assistant'),
+        title: const Text("KrishiAI Assistant"),
         backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.translate),
-            onPressed: () => _showLanguageOptions(context),
-            tooltip: 'Change Language',
-          ),
-        ],
       ),
       body: Column(
         children: [
-          // Chat Messages
           Expanded(
-            child: _chatMessages.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.agriculture, size: 60, color: Colors.green),
-                        SizedBox(height: 16),
-                        Text(
-                          'Hello! I am KrishiAI',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'Ask me about crops, weather, or farming techniques',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: _chatMessages.length,
+              itemBuilder: (context, index) {
+                final message = _chatMessages[index];
+
+                return Align(
+                  alignment: message['isUser']
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 5),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: message['isUser']
+                          ? Colors.green[100]
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _chatMessages.length,
-                    itemBuilder: (context, index) {
-                      final message = _chatMessages[index];
-                      return _buildChatMessage(
-                        message['text'] as String,
-                        message['isUser'] as bool,
-                        message['time'] as String,
-                      );
-                    },
+                    child: Text(
+                      message['text'],
+                      style: const TextStyle(fontSize: 15),
+                    ),
                   ),
+                );
+              },
+            ),
           ),
 
-          // Input Area
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                ),
-              ],
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(color: Colors.green),
             ),
+
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _chatController,
-                    decoration: InputDecoration(
-                      hintText: 'Ask about crops, weather, farming...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: const InputDecoration(
+                      hintText: "Ask about farming...",
+                      border: OutlineInputBorder(),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.green,
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.green),
+                  onPressed: _sendMessage,
                 ),
               ],
             ),
@@ -105,134 +186,5 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         ],
       ),
     );
-  }
-
-  Widget _buildChatMessage(String text, bool isUser, String time) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          if (!isUser)
-            CircleAvatar(
-              backgroundColor: Colors.green,
-              child: const Icon(Icons.agriculture, color: Colors.white, size: 18),
-            ),
-          if (!isUser) const SizedBox(width: 8),
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isUser ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(text),
-                  const SizedBox(height: 4),
-                  Text(
-                    time,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isUser) const SizedBox(width: 8),
-          if (isUser)
-            const CircleAvatar(
-              backgroundColor: Colors.blue,
-              child: Icon(Icons.person, color: Colors.white, size: 18),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _sendMessage() {
-    if (_chatController.text.trim().isEmpty) return;
-
-    final userMessage = {
-      'text': _chatController.text,
-      'isUser': true,
-      'time': _formatTime(DateTime.now()),
-    };
-
-    setState(() {
-      _chatMessages.add(userMessage);
-    });
-
-    _chatController.clear();
-
-    // Simulate AI response
-    Future.delayed(const Duration(seconds: 1), () {
-      final aiResponse = _getAIResponse(userMessage['text'] as String);
-      setState(() {
-        _chatMessages.add({
-          'text': aiResponse,
-          'isUser': false,
-          'time': _formatTime(DateTime.now()),
-        });
-      });
-    });
-  }
-
-  String _getAIResponse(String userMessage) {
-    final message = userMessage.toLowerCase();
-    
-    if (message.contains('wheat') || message.contains('crop')) {
-      return "For wheat cultivation, ensure soil pH between 6.0-7.5. Optimal temperature is 20-25°C. Requires 500-600mm rainfall. Best planting time is October-November.";
-    } else if (message.contains('weather') || message.contains('rain')) {
-      return "Current weather is favorable for farming. Temperature: 28°C, Humidity: 65%. Expected rainfall in next 3 days: 15mm.";
-    } else if (message.contains('fertilizer') || message.contains('nutrient')) {
-      return "For most crops, use NPK 20:20:20. Apply 100kg/hectare before planting and 50kg/hectare during growth stage.";
-    } else if (message.contains('pest') || message.contains('insect')) {
-      return "Common pests: Aphids, Bollworms. Use neem-based pesticides. Monitor crops weekly. Remove infected plants immediately.";
-    } else if (message.contains('irrigation') || message.contains('water')) {
-      return "Water requirements vary by crop. Wheat: 4-6 irrigations. Rice: Continuous flooding. Vegetables: Daily light watering.";
-    } else {
-      return "I can help you with crop selection, weather information, pest control, irrigation scheduling, and fertilizer recommendations. What would you like to know?";
-    }
-  }
-
-  void _showLanguageOptions(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Language'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildLanguageOption(context, 'English'),
-            _buildLanguageOption(context, 'Hindi'),
-            _buildLanguageOption(context, 'Marathi'),
-            _buildLanguageOption(context, 'Tamil'),
-            _buildLanguageOption(context, 'Telugu'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLanguageOption(BuildContext context, String language) {
-    return ListTile(
-      leading: const Icon(Icons.language),
-      title: Text(language),
-      onTap: () {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Language changed to $language'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
   }
 }

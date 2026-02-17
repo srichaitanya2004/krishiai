@@ -1,5 +1,6 @@
-// settings_screen.dart
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../app/app.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -9,11 +10,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _darkModeEnabled = false;
-
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final isDark = App.isDarkMode(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings & Profile'),
@@ -23,7 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // User Profile
+          // 🔹 USER PROFILE
           Card(
             elevation: 3,
             child: Padding(
@@ -33,215 +34,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.green,
-                    child: Icon(Icons.person, color: Colors.white, size: 30),
+                    child: Icon(Icons.person, color: Colors.white),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Farmer User',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
                         Text(
-                          'user@farmer.com',
-                          style: TextStyle(color: Colors.grey[600]),
+                          user?.userMetadata?['name'] ?? 'Farmer User',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        Text(
-                          '+91 9876543210',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
+                        Text(user?.email ?? 'user@email.com'),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.green),
-                    onPressed: () => _showEditProfileDialog(context),
                   ),
                 ],
               ),
             ),
           ),
+
           const SizedBox(height: 20),
 
-          // Settings Options
           const Text(
             'App Settings',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
+
           const SizedBox(height: 12),
+
           Card(
             elevation: 3,
             child: Column(
               children: [
+                // 🔹 DARK MODE SWITCH (Fixed)
                 SwitchListTile(
-                  title: const Text('Push Notifications'),
-                  subtitle: const Text('Receive farming alerts and updates'),
-                  value: _notificationsEnabled,
+                  title: const Text('Dark Mode'),
+                  subtitle: const Text('Switch to dark theme'),
+                  value: isDark,
                   onChanged: (value) {
-                    setState(() {
-                      _notificationsEnabled = value;
-                    });
+                    App.toggleTheme(context, value);
+
+                    // 🔥 force rebuild of this screen
+                    setState(() {});
                   },
-                  secondary: const Icon(Icons.notifications, color: Colors.green),
+                  secondary: const Icon(Icons.dark_mode, color: Colors.green),
                 ),
+
                 const Divider(),
+
                 ListTile(
                   leading: const Icon(Icons.language, color: Colors.green),
                   title: const Text('App Language'),
                   subtitle: const Text('English'),
                   trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () => _showLanguageOptions(context),
-                ),
-                const Divider(),
-                SwitchListTile(
-                  title: const Text('Dark Mode'),
-                  subtitle: const Text('Switch to dark theme'),
-                  value: _darkModeEnabled,
-                  onChanged: (value) {
-                    setState(() {
-                      _darkModeEnabled = value;
-                    });
-                  },
-                  secondary: const Icon(Icons.dark_mode, color: Colors.green),
+                  onTap: () {},
                 ),
               ],
             ),
           ),
+
           const SizedBox(height: 30),
 
-          // Logout Button
           ElevatedButton.icon(
-            onPressed: () => _showLogoutDialog(context),
+            onPressed: () async {
+              await Supabase.instance.client.auth.signOut();
+            },
             icon: const Icon(Icons.logout),
-            label: const Text('Logout', style: TextStyle(fontSize: 16)),
+            label: const Text('Logout'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 50),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditProfileDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Profile'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  border: OutlineInputBorder(),
-                ),
-                initialValue: 'Farmer User',
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-                initialValue: 'user@farmer.com',
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Phone',
-                  border: OutlineInputBorder(),
-                ),
-                initialValue: '+91 9876543210',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Profile updated successfully'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLanguageOptions(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Language'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildLanguageOption(context, 'English'),
-            _buildLanguageOption(context, 'Hindi'),
-            _buildLanguageOption(context, 'Marathi'),
-            _buildLanguageOption(context, 'Tamil'),
-            _buildLanguageOption(context, 'Telugu'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLanguageOption(BuildContext context, String language) {
-    return ListTile(
-      leading: const Icon(Icons.language),
-      title: Text(language),
-      onTap: () {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Language changed to $language'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      },
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logged out successfully'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Logout'),
           ),
         ],
       ),
